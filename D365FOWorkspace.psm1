@@ -4,6 +4,45 @@
 $configFile = Get-ChildItem "$PSScriptRoot\config.ps1"
 . $configFile.FullName
 
+function Backup-FOConfigFiles
+{
+	<#
+	.SYNOPSIS
+	Backup all original files
+	#>
+
+	# Load D365FODEV config file
+	$devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
+
+	if (-Not (Test-Path $devConfigPath))
+	{
+		throw 'Dynamics DEV config file was not found.'
+	}
+
+	Backup-FOFile -filePath $devConfigPath
+
+	# Load WEBROOT config file
+	[xml]$devConfig = Get-Content $devConfigPath
+	$webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
+	$webConfigPath = $webRoot + '\web.config'
+
+	Backup-FOFile -filePath $webConfigPath
+
+	# Load VS config file
+	$versionNum = ""
+
+		switch ($VSVersion) {
+			"2017" { $versionNum = "15" }
+			"2019" { $versionNum = "16" }
+			Default { $versionNum = "17" } # 2022
+		}
+
+		$settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
+		$settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
+
+		Backup-FOFile -filePath $settingsFile
+}
+
 function Switch-FOWorkspace
 {
 	<#
@@ -12,12 +51,12 @@ function Switch-FOWorkspace
 	#>
 	
 	param (
-		[string] $WorkspaceDir = (Get-Location)
+		[string] $WorkspaceDir # = (Get-Location)
 	)
 
 	# You can modify these variables or expose them as function parameters
 	$switchPackages = $true
-	$switchVsDefaultProjectsPath = $true
+	$switchVsDefaultProjectsPath = $false
 
 	[string]$workspaceMetaDir = Join-Path $WorkspaceDir 'Metadata'
 	[string]$workspaceProjectsDir = Join-Path $WorkspaceDir 'Projects'
@@ -35,11 +74,14 @@ function Switch-FOWorkspace
 	$webConfigPath = $webRoot + '\web.config'
 	[xml]$webConfig = Get-Content $webConfigPath
 
+	$activeWorkspace = Get-FOWorkspace
+	Write-Host "Previous workspace: $activeWorkspace"
+
 	# Update path to packages
 	if ($switchPackages)
 	{
 		Stop-D365Environment -ShowOriginalProgress
-
+		
 		$appSettings = $webConfig.configuration.appSettings
 		$appSettings.SelectSingleNode("add[@key='Aos.MetadataDirectory']").Value = $workspaceMetaDir
 		$appSettings.SelectSingleNode("add[@key='Aos.PackageDirectory']").Value = $workspaceMetaDir 
@@ -51,13 +93,23 @@ function Switch-FOWorkspace
 		$webConfig.Save($webConfigPath)
 	}
 
+	$activeWorkspace = Get-FOWorkspace
+	Write-Host "Active workspace: $activeWorkspace"
+
 	# Switch the default path for new projects in Visual Studio
 	if ($switchVsDefaultProjectsPath)
 	{
-		$versionNum = if ($VSVersion -eq "2017") {'15'} else {"16"}
+		$versionNum = ""
+
+		switch ($VSVersion) {
+			"2017" { $versionNum = "15" }
+			"2019" { $versionNum = "16" }
+			Default { $versionNum = "17" } # 2022
+		}
+
 		$settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
-		
 		$settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
+
 		if ($settingsFile)
 		{
 			[xml]$vsConfigXml = Get-Content $settingsFile
@@ -104,7 +156,7 @@ function Add-FOPackageSymLinks
 	#>
 	
 	param (
-		[string] $WorkspaceDir = (Get-Location)
+		[string] $WorkspaceDir # = (Get-Location)
 	)
 
 	if ((Test-Path $WorkspaceDir) -ne $true)
@@ -138,7 +190,6 @@ function Add-FOPackageSymLinks
 	}
 }
 
-
 function Get-FOPackagesDir
 {
 	<#
@@ -162,4 +213,39 @@ function Get-FOPackagesDir
 	}
 
 	throw "Cannot find PackagesLocalDirectory. Specify the path in $($configFile.FullName)."
+}
+
+function Backup-FOFile
+{
+    <#
+	.SYNOPSIS
+	Check if a file backup exists, otherwise creates one
+	#>
+	
+	param(
+        [string] $filePath
+    )
+
+    # Step 1: Ensure the file exists
+    if (-not (Test-Path $filePath -PathType Leaf)) {
+        Write-Host "Error: The file does not exist at $filePath."
+        return
+    }
+
+    # Step 2: Check if a backup already exists
+    $directory = (Get-Item $filePath).Directory.FullName
+    $fileName = (Get-Item $filePath).BaseName
+    $extension = (Get-Item $filePath).Extension
+
+    $backupFileName = "$fileName" + "_OrigBackup$extension"
+    $backupFilePath = Join-Path -Path $directory -ChildPath $backupFileName
+
+    if (Test-Path $backupFilePath -PathType Leaf) {
+        Write-Host "Backup already exists at $backupFilePath. Skipping backup creation."
+    }
+    else {
+        # Step 3: Create the backup file
+        Copy-Item $filePath $backupFilePath
+        Write-Host "Backup created at $backupFilePath."
+    }
 }
