@@ -56,7 +56,7 @@ function Switch-FOWorkspace
 
 	# You can modify these variables or expose them as function parameters
 	$switchPackages = $true
-	$switchVsDefaultProjectsPath = $false
+	$switchVsDefaultProjectsPath = $true
 
 	[string]$workspaceMetaDir = Join-Path $WorkspaceDir 'Metadata'
 	[string]$workspaceProjectsDir = Join-Path $WorkspaceDir 'Projects'
@@ -117,10 +117,17 @@ function Switch-FOWorkspace
 			$envOptions = $options.SelectSingleNode("ToolsOptionsCategory[@name='Environment']")
 			$projOptions = $envOptions.SelectSingleNode("ToolsOptionsSubCategory[@name='ProjectsAndSolution']")
 			$projPathElement = $projOptions.SelectSingleNode("PropertyValue[@name='ProjectsLocation']")
+
 			if ($projPathElement.InnerText -ne $workspaceProjectsDir)
 			{
 				$projPathElement.InnerText = $workspaceProjectsDir
 				$vsConfigXml.Save($settingsFile)
+
+				Write-Information "Visual Studio configuration file updated"
+			}
+			else 
+			{
+				Write-Warning "Visual Studio configuration file project location not updated"
 			}
 		}
 		else
