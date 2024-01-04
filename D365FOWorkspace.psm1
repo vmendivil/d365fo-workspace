@@ -444,23 +444,6 @@ function Compare-FOConfigFiles
     $webConfigPath = Join-Path $webRoot 'web.config'
     $backupWebConfigPath = Join-Path $webRoot ('web' + $backupSuffix + '.config')
     Compare-FOFileProperties -FilePath $webConfigPath -BackupFilePath $backupWebConfigPath
-
-    # Compare Visual Studio settings file (if applicable)
-    if ($switchVsDefaultProjectsPath)
-    {
-        $versionNum = ""
-        switch ($VSVersion) {
-            "2017" { $versionNum = "15" }
-            "2019" { $versionNum = "16" }
-            Default { $versionNum = "17" } # 2022
-        }
-
-        $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
-        $settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
-        $backupSettingsFile = Join-Path $settingsFilePattern ($settingsFile.Name + $backupSuffix)
-
-        Compare-FOFileProperties -FilePath $settingsFile.FullName -BackupFilePath $backupSettingsFile
-    }
 }
 
 function Compare-FOFileProperties
