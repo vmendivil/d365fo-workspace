@@ -186,246 +186,16 @@ function Get-FOPackagesDir
 	throw "Cannot find PackagesLocalDirectory. Specify the path in $($configFile.FullName)."
 }
 
-function Backup-FOConfigFiles
+function Compare-FOWebConfigFile
 {
     <#
     .SYNOPSIS
-    Backup all original files
+    Compares specific properties for the web.config file
     #>
 
-    # Load D365FODEV config file
-    $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
-
-    if (-Not (Test-Path $devConfigPath))
-    {
-        throw 'Dynamics DEV config file was not found.'
-    }
-
-    Backup-FOFile -filePath $devConfigPath
-
-    # Load WEBROOT config file
-    [xml]$devConfig = Get-Content $devConfigPath
-    $webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
-    $webConfigPath = $webRoot + '\web.config'
-
-    Backup-FOFile -filePath $webConfigPath
-
-    # Load VS config file
-    $versionNum = ""
-
-    switch ($VSVersion) {
-        "2017" { $versionNum = "15" }
-        "2019" { $versionNum = "16" }
-        Default { $versionNum = "17" } # 2022
-    }
-
-    $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
-    $settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
-
-    Backup-FOFile -filePath $settingsFile
-}
-
-function Backup-FOFile
-{
-    <#
-    .SYNOPSIS
-    Check if a file backup exists, otherwise creates one
-    #>
-
-    param(
-        [string] $filePath
+    param (
+        [string] $BackupDir
     )
-
-    # Step 1: Ensure the file exists
-    if (-not (Test-Path $filePath -PathType Leaf)) {
-        Write-Host "Error: The file does not exist at $filePath."
-        return
-    }
-
-    # Step 2: Check if a backup already exists
-    $directory = (Get-Item $filePath).Directory.FullName
-    $fileName = (Get-Item $filePath).BaseName
-    $extension = (Get-Item $filePath).Extension
-
-    $backupFileName = "$fileName$backupSuffix$extension"
-    $backupFilePath = Join-Path -Path $directory -ChildPath $backupFileName
-
-    if (Test-Path $backupFilePath -PathType Leaf) {
-        Write-Host "Backup already exists at $backupFilePath. Skipping backup creation."
-    }
-    else {
-        # Step 3: Create the backup file
-        Copy-Item $filePath $backupFilePath
-        Write-Host "Backup created at $backupFilePath."
-    }
-}
-
-function Restore-FOFile
-{
-    <#
-    .SYNOPSIS
-    Restore a single file from backup
-    #>
-
-    param(
-        [string] $filePath
-    )
-
-    # Step 1: Check if a backup exists
-    $directory = (Get-Item $filePath).Directory.FullName
-    $fileName = (Get-Item $filePath).BaseName
-    $extension = (Get-Item $filePath).Extension
-
-    $backupFileName = "$fileName$backupSuffix$extension"
-    $backupFilePath = Join-Path -Path $directory -ChildPath $backupFileName
-
-    if (Test-Path $backupFilePath -PathType Leaf) {
-        # Step 2: Restore the file from backup
-        Copy-Item $backupFilePath $filePath -Force
-        Write-Host "File restored from backup. Original file: $filePath, Backup file: $backupFilePath."
-    }
-    else {
-        Write-Host "Error: Backup file does not exist for $filePath. Unable to restore."
-    }
-}
-
-function Restore-FOConfigFiles
-{
-    <#
-    .SYNOPSIS
-    Restore all original files
-    #>
-
-    param(
-        [switch]$IncludeVisualStudioFiles
-    )
-
-    # Load D365FODEV config file
-    $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
-
-    if (-Not (Test-Path $devConfigPath))
-    {
-        throw 'Dynamics DEV config file was not found.'
-    }
-
-    Restore-FOFile -filePath $devConfigPath
-
-    # Load WEBROOT config file
-    [xml]$devConfig = Get-Content $devConfigPath
-    $webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
-    $webConfigPath = $webRoot + '\web.config'
-
-    Restore-FOFile -filePath $webConfigPath
-
-    # Load VS config file if IncludeVisualStudioFiles is set
-    if ($IncludeVisualStudioFiles) {
-        $versionNum = ""
-
-        switch ($VSVersion) {
-            "2017" { $versionNum = "15" }
-            "2019" { $versionNum = "16" }
-            Default { $versionNum = "17" } # 2022
-        }
-
-        $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
-        $settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
-
-        Restore-FOFile -filePath $settingsFile
-    }
-    else {
-        Write-Host "Visual Studio files are excluded from restoration."
-    }
-}
-
-function Remove-FOBackupFile
-{
-    <#
-    .SYNOPSIS
-    Delete a single backup file
-    #>
-
-    param(
-        [string] $filePath
-    )
-
-    # Step 1: Check if a backup exists
-    $directory = (Get-Item $filePath).Directory.FullName
-    $fileName = (Get-Item $filePath).BaseName
-    $extension = (Get-Item $filePath).Extension
-
-    $backupFileName = "$fileName$backupSuffix$extension"
-    $backupFilePath = Join-Path -Path $directory -ChildPath $backupFileName
-
-    if (Test-Path $backupFilePath -PathType Leaf) {
-        # Step 2: Delete the backup file
-        Remove-Item $backupFilePath -Force
-        Write-Host "Backup file deleted: $backupFilePath."
-    }
-    else {
-        Write-Host "Error: Backup file does not exist for $filePath. Unable to delete."
-    }
-}
-
-function Remove-FOBackupFiles
-{
-    <#
-    .SYNOPSIS
-    Delete all backup files with confirmation prompt
-    #>
-
-    param(
-        [switch]$IncludeVisualStudioFiles
-    )
-
-    # Confirm deletion of all backup files
-    $confirmation = Read-Host "Are you sure you want to delete all backup files? (Y/N)"
-    if ($confirmation -ne 'Y') {
-        Write-Host "Deletion canceled."
-        return
-    }
-
-    # Define paths used in Backup and Restore functions
-    $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
-    [xml]$devConfig = Get-Content $devConfigPath
-    $webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
-    $webConfigPath = $webRoot + '\web.config'
-
-    # Delete all backup files
-    $backupFiles = @(
-        Join-Path -Path (Get-Item $devConfigPath).Directory.FullName -ChildPath ($devConfig.Name + $backupSuffix),
-        Join-Path -Path (Get-Item $webConfigPath).Directory.FullName -ChildPath ('web' + $backupSuffix + '.config')
-    )
-
-    if ($IncludeVisualStudioFiles) {
-        $versionNum = ""
-        switch ($VSVersion) {
-            "2017" { $versionNum = "15" }
-            "2019" { $versionNum = "16" }
-            Default { $versionNum = "17" } # 2022
-        }
-        $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
-        $visualStudioBackupFile = (Get-ChildItem $settingsFilePattern | Select-Object -First 1).FullName + $backupSuffix
-
-        $backupFiles += $visualStudioBackupFile
-    }
-
-    foreach ($file in $backupFiles) {
-        if (Test-Path $file -PathType Leaf) {
-            Remove-Item $file -Force
-            Write-Host "Backup file deleted: $file"
-        }
-        else {
-            Write-Host "Error: Backup file does not exist at $file. Unable to delete."
-        }
-    }
-}
-
-function Compare-FOConfigFiles
-{
-    <#
-    .SYNOPSIS
-    Compares specific properties in configuration files with their backups.
-    #>
 
     # Load DEV config file
     $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
@@ -441,27 +211,12 @@ function Compare-FOConfigFiles
     $webConfigPath = Join-Path $webRoot 'web.config'
 
     # Compare web.config file
-    $webConfigPath = Join-Path $webRoot 'web.config'
-    $backupWebConfigPath = Join-Path $webRoot ('web' + $backupSuffix + '.config')
-    Compare-FOFileProperties -FilePath $webConfigPath -BackupFilePath $backupWebConfigPath
-}
-
-function Compare-FOFileProperties
-{
-    <#
-    .SYNOPSIS
-    Compares specific properties in a file with its backup.
-    #>
-
-    param (
-        [string] $FilePath,
-        [string] $BackupFilePath
-    )
+    $backupWebConfigPath = Join-Path $BackupDir ('web.config')
 
     # Step 1: Ensure both files exist
-    if (!(Test-Path $FilePath -PathType Leaf) -or !(Test-Path $BackupFilePath -PathType Leaf))
+    if (!(Test-Path $webConfigPath -PathType Leaf) -or !(Test-Path $backupWebConfigPath -PathType Leaf))
     {
-        Write-Host "Error: File $FilePath or Backup file $BackupFilePath does not exist."
+        Write-Host "Error: File $webConfigPath or Backup file $backupWebConfigPath does not exist."
         return
     }
 
@@ -476,8 +231,8 @@ function Compare-FOFileProperties
     )
 
     # Step 3: Load the content of both files as XML
-    [xml]$xmlContent = Get-Content $FilePath
-    [xml]$backupContent = Get-Content $BackupFilePath
+    [xml]$xmlContent = Get-Content $webConfigPath
+    [xml]$backupContent = Get-Content $backupWebConfigPath
 
     foreach ($property in $propertiesToCompare)
     {
@@ -495,25 +250,22 @@ function Compare-FOFileProperties
                 $backupValue = $backupValueNode.Value
 
                 # Step 7: Display the comparison result
-                Write-Host "Property: $property"
-                Write-Host "   Current Value   : $value"
-                Write-Host "   Backup Value    : $backupValue"
-                Write-Host "   Values Match?   : $($value -eq $backupValue)"
+                Write-Host "   Property: $property"
+                Write-Host "      Current Value   : $value"
+                Write-Host "      Backup Value    : $backupValue"
+                Write-Host "      Values Match?   : $($value -eq $backupValue)"
                 Write-Host ""
             } else {
                 # Step 8: Display a message if the property does not exist in the backup file
-                Write-Host "Property: $property"
-                Write-Host "   Does not exist in $BackupFilePath."
+                Write-Host "   Property: $property"
+                Write-Host "      Does not exist in $backupWebConfigPath."
                 Write-Host ""
             }
         } else {
             # Step 9: Display a message if the property does not exist in the original file
-            Write-Host "Property: $property"
-            Write-Host "   Does not exist in $FilePath."
+            Write-Host "   Property: $property"
+            Write-Host "      Does not exist in $webConfigPath."
             Write-Host ""
         }
     }
 }
-
-
-
