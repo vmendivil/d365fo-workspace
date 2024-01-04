@@ -419,3 +419,118 @@ function Remove-FOBackupFiles
         }
     }
 }
+
+function Compare-FOConfigFiles
+{
+    <#
+    .SYNOPSIS
+    Compares specific properties in configuration files with their backups.
+    #>
+
+    # Load DEV config file
+    $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
+
+    if (-Not (Test-Path $devConfigPath))
+    {
+        Write-Host "Error: Dynamics DEV config file was not found in $env:USERPROFILE."
+        return
+    }
+
+    [xml]$devConfig = Get-Content $devConfigPath
+    $webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
+    $webConfigPath = Join-Path $webRoot 'web.config'
+
+    # Compare web.config file
+    $webConfigPath = Join-Path $webRoot 'web.config'
+    $backupWebConfigPath = Join-Path $webRoot ('web' + $backupSuffix + '.config')
+    Compare-FOFileProperties -FilePath $webConfigPath -BackupFilePath $backupWebConfigPath
+
+    # Compare Visual Studio settings file (if applicable)
+    if ($switchVsDefaultProjectsPath)
+    {
+        $versionNum = ""
+        switch ($VSVersion) {
+            "2017" { $versionNum = "15" }
+            "2019" { $versionNum = "16" }
+            Default { $versionNum = "17" } # 2022
+        }
+
+        $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
+        $settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
+        $backupSettingsFile = Join-Path $settingsFilePattern ($settingsFile.Name + $backupSuffix)
+
+        Compare-FOFileProperties -FilePath $settingsFile.FullName -BackupFilePath $backupSettingsFile
+    }
+}
+
+function Compare-FOFileProperties
+{
+    <#
+    .SYNOPSIS
+    Compares specific properties in a file with its backup.
+    #>
+
+    param (
+        [string] $FilePath,
+        [string] $BackupFilePath
+    )
+
+    # Step 1: Ensure both files exist
+    if (!(Test-Path $FilePath -PathType Leaf) -or !(Test-Path $BackupFilePath -PathType Leaf))
+    {
+        Write-Host "Error: File $FilePath or Backup file $BackupFilePath does not exist."
+        return
+    }
+
+    # Step 2: Compare specific properties (adjust as needed)
+    $propertiesToCompare = @(
+        "Aos.MetadataDirectory",
+        "Aos.PackageDirectory",
+        "bindir",
+        "Common.BinDir",
+        "Microsoft.Dynamics.AX.AosConfig.AzureConfig.bindir",
+        "Common.DevToolsBinDir"
+    )
+
+    # Step 3: Load the content of both files as XML
+    [xml]$xmlContent = Get-Content $FilePath
+    [xml]$backupContent = Get-Content $BackupFilePath
+
+    foreach ($property in $propertiesToCompare)
+    {
+        # Step 4: Check if the property exists in the original file
+        $propertyNode = $xmlContent.configuration.appSettings.SelectSingleNode("add[@key='$property']")
+
+        if ($propertyNode -ne $null) {
+            # Step 5: Retrieve values for comparison from the original file
+            $value = $propertyNode.Value
+
+            # Step 6: Retrieve values for comparison from the backup file
+            $backupValueNode = $backupContent.configuration.appSettings.SelectSingleNode("add[@key='$property']")
+            
+            if ($backupValueNode -ne $null) {
+                $backupValue = $backupValueNode.Value
+
+                # Step 7: Display the comparison result
+                Write-Host "Property: $property"
+                Write-Host "   Current Value   : $value"
+                Write-Host "   Backup Value    : $backupValue"
+                Write-Host "   Values Match?   : $($value -eq $backupValue)"
+                Write-Host ""
+            } else {
+                # Step 8: Display a message if the property does not exist in the backup file
+                Write-Host "Property: $property"
+                Write-Host "   Does not exist in $BackupFilePath."
+                Write-Host ""
+            }
+        } else {
+            # Step 9: Display a message if the property does not exist in the original file
+            Write-Host "Property: $property"
+            Write-Host "   Does not exist in $FilePath."
+            Write-Host ""
+        }
+    }
+}
+
+
+
