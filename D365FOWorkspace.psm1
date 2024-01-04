@@ -366,7 +366,7 @@ function Remove-FOBackupFile
     }
 }
 
-function Remove-AllFOBackupFiles
+function Remove-FOBackupFiles
 {
     <#
     .SYNOPSIS
