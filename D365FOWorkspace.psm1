@@ -4,44 +4,8 @@
 $configFile = Get-ChildItem "$PSScriptRoot\config.ps1"
 . $configFile.FullName
 
-function Backup-FOConfigFiles
-{
-	<#
-	.SYNOPSIS
-	Backup all original files
-	#>
-
-	# Load D365FODEV config file
-	$devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
-
-	if (-Not (Test-Path $devConfigPath))
-	{
-		throw 'Dynamics DEV config file was not found.'
-	}
-
-	Backup-FOFile -filePath $devConfigPath
-
-	# Load WEBROOT config file
-	[xml]$devConfig = Get-Content $devConfigPath
-	$webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
-	$webConfigPath = $webRoot + '\web.config'
-
-	Backup-FOFile -filePath $webConfigPath
-
-	# Load VS config file
-	$versionNum = ""
-
-		switch ($VSVersion) {
-			"2017" { $versionNum = "15" }
-			"2019" { $versionNum = "16" }
-			Default { $versionNum = "17" } # 2022
-		}
-
-		$settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
-		$settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
-
-		Backup-FOFile -filePath $settingsFile
-}
+# Define backup suffix
+$backupSuffix = "_OrigBackup"
 
 function Switch-FOWorkspace
 {
@@ -222,14 +186,53 @@ function Get-FOPackagesDir
 	throw "Cannot find PackagesLocalDirectory. Specify the path in $($configFile.FullName)."
 }
 
+function Backup-FOConfigFiles
+{
+    <#
+    .SYNOPSIS
+    Backup all original files
+    #>
+
+    # Load D365FODEV config file
+    $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
+
+    if (-Not (Test-Path $devConfigPath))
+    {
+        throw 'Dynamics DEV config file was not found.'
+    }
+
+    Backup-FOFile -filePath $devConfigPath
+
+    # Load WEBROOT config file
+    [xml]$devConfig = Get-Content $devConfigPath
+    $webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
+    $webConfigPath = $webRoot + '\web.config'
+
+    Backup-FOFile -filePath $webConfigPath
+
+    # Load VS config file
+    $versionNum = ""
+
+    switch ($VSVersion) {
+        "2017" { $versionNum = "15" }
+        "2019" { $versionNum = "16" }
+        Default { $versionNum = "17" } # 2022
+    }
+
+    $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
+    $settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
+
+    Backup-FOFile -filePath $settingsFile
+}
+
 function Backup-FOFile
 {
     <#
-	.SYNOPSIS
-	Check if a file backup exists, otherwise creates one
-	#>
-	
-	param(
+    .SYNOPSIS
+    Check if a file backup exists, otherwise creates one
+    #>
+
+    param(
         [string] $filePath
     )
 
@@ -244,7 +247,7 @@ function Backup-FOFile
     $fileName = (Get-Item $filePath).BaseName
     $extension = (Get-Item $filePath).Extension
 
-    $backupFileName = "$fileName" + "_OrigBackup$extension"
+    $backupFileName = "$fileName$backupSuffix$extension"
     $backupFilePath = Join-Path -Path $directory -ChildPath $backupFileName
 
     if (Test-Path $backupFilePath -PathType Leaf) {
@@ -254,5 +257,165 @@ function Backup-FOFile
         # Step 3: Create the backup file
         Copy-Item $filePath $backupFilePath
         Write-Host "Backup created at $backupFilePath."
+    }
+}
+
+function Restore-FOFile
+{
+    <#
+    .SYNOPSIS
+    Restore a single file from backup
+    #>
+
+    param(
+        [string] $filePath
+    )
+
+    # Step 1: Check if a backup exists
+    $directory = (Get-Item $filePath).Directory.FullName
+    $fileName = (Get-Item $filePath).BaseName
+    $extension = (Get-Item $filePath).Extension
+
+    $backupFileName = "$fileName$backupSuffix$extension"
+    $backupFilePath = Join-Path -Path $directory -ChildPath $backupFileName
+
+    if (Test-Path $backupFilePath -PathType Leaf) {
+        # Step 2: Restore the file from backup
+        Copy-Item $backupFilePath $filePath -Force
+        Write-Host "File restored from backup. Original file: $filePath, Backup file: $backupFilePath."
+    }
+    else {
+        Write-Host "Error: Backup file does not exist for $filePath. Unable to restore."
+    }
+}
+
+function Restore-FOConfigFiles
+{
+    <#
+    .SYNOPSIS
+    Restore all original files
+    #>
+
+    param(
+        [switch]$IncludeVisualStudioFiles
+    )
+
+    # Load D365FODEV config file
+    $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
+
+    if (-Not (Test-Path $devConfigPath))
+    {
+        throw 'Dynamics DEV config file was not found.'
+    }
+
+    Restore-FOFile -filePath $devConfigPath
+
+    # Load WEBROOT config file
+    [xml]$devConfig = Get-Content $devConfigPath
+    $webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
+    $webConfigPath = $webRoot + '\web.config'
+
+    Restore-FOFile -filePath $webConfigPath
+
+    # Load VS config file if IncludeVisualStudioFiles is set
+    if ($IncludeVisualStudioFiles) {
+        $versionNum = ""
+
+        switch ($VSVersion) {
+            "2017" { $versionNum = "15" }
+            "2019" { $versionNum = "16" }
+            Default { $versionNum = "17" } # 2022
+        }
+
+        $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
+        $settingsFile = Get-ChildItem $settingsFilePattern | Select-Object -First 1
+
+        Restore-FOFile -filePath $settingsFile
+    }
+    else {
+        Write-Host "Visual Studio files are excluded from restoration."
+    }
+}
+
+function Remove-FOBackupFile
+{
+    <#
+    .SYNOPSIS
+    Delete a single backup file
+    #>
+
+    param(
+        [string] $filePath
+    )
+
+    # Step 1: Check if a backup exists
+    $directory = (Get-Item $filePath).Directory.FullName
+    $fileName = (Get-Item $filePath).BaseName
+    $extension = (Get-Item $filePath).Extension
+
+    $backupFileName = "$fileName$backupSuffix$extension"
+    $backupFilePath = Join-Path -Path $directory -ChildPath $backupFileName
+
+    if (Test-Path $backupFilePath -PathType Leaf) {
+        # Step 2: Delete the backup file
+        Remove-Item $backupFilePath -Force
+        Write-Host "Backup file deleted: $backupFilePath."
+    }
+    else {
+        Write-Host "Error: Backup file does not exist for $filePath. Unable to delete."
+    }
+}
+
+function Remove-AllFOBackupFiles
+{
+    <#
+    .SYNOPSIS
+    Delete all backup files with confirmation prompt
+    #>
+
+    param(
+        [switch]$IncludeVisualStudioFiles
+    )
+
+    # Confirm deletion of all backup files
+    $confirmation = Read-Host "Are you sure you want to delete all backup files? (Y/N)"
+    if ($confirmation -ne 'Y') {
+        Write-Host "Deletion canceled."
+        return
+    }
+
+    # Define paths used in Backup and Restore functions
+    $devConfigPath = $env:USERPROFILE + '\Documents\Visual Studio Dynamics 365\DynamicsDevConfig.xml'
+    [xml]$devConfig = Get-Content $devConfigPath
+    $webRoot = $devConfig.DynamicsDevConfig.WebRoleDeploymentFolder
+    $webConfigPath = $webRoot + '\web.config'
+
+    # Delete all backup files
+    $backupFiles = @(
+        Join-Path -Path (Get-Item $devConfigPath).Directory.FullName -ChildPath ($devConfig.Name + $backupSuffix),
+        Join-Path -Path (Get-Item $webConfigPath).Directory.FullName -ChildPath ('web' + $backupSuffix + '.config')
+    )
+
+    if ($IncludeVisualStudioFiles) {
+        $versionNum = ""
+        switch ($VSVersion) {
+            "2017" { $versionNum = "15" }
+            "2019" { $versionNum = "16" }
+            Default { $versionNum = "17" } # 2022
+        }
+        $settingsFilePattern = "$($env:LocalAppData)\Microsoft\VisualStudio\$versionNum*\Settings\CurrentSettings.vssettings"
+        $visualStudioBackupFile = (Get-ChildItem $settingsFilePattern | Select-Object -First 1).FullName + $backupSuffix
+
+        $backupFiles += $visualStudioBackupFile
+    }
+
+    foreach ($file in $backupFiles) {
+        if (Test-Path $file -PathType Leaf) {
+            Remove-Item $file -Force
+            Write-Host "Backup file deleted: $file"
+        }
+        else {
+            Write-Host "Error: Backup file does not exist at $file. Unable to delete."
+        }
     }
 }
