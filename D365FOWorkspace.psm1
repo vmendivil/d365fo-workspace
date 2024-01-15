@@ -170,7 +170,7 @@ function Get-FOPackagesDir
 		return $PackageDir
 	}
 
-	foreach ($drive in (Get-Volume | where OperationalStatus -eq OK | where DriveLetter -ne $null | select -Expand DriveLetter))
+	foreach ($drive in (Get-Volume | Where-Object OperationalStatus -eq OK | Where-Object DriveLetter -ne $null | Select-Object -Expand DriveLetter))
 	{
 		$path = "${drive}:\AosService\PackagesLocalDirectory"
 		
@@ -236,14 +236,14 @@ function Compare-FOWebConfigFile
         # Step 4: Check if the property exists in the original file
         $propertyNode = $xmlContent.configuration.appSettings.SelectSingleNode("add[@key='$property']")
 
-        if ($propertyNode -ne $null) {
+        if ($null -ne $propertyNode) {
             # Step 5: Retrieve values for comparison from the original file
             $value = $propertyNode.Value
 
             # Step 6: Retrieve values for comparison from the backup file
             $backupValueNode = $backupContent.configuration.appSettings.SelectSingleNode("add[@key='$property']")
             
-            if ($backupValueNode -ne $null) {
+            if ($null -ne $backupValueNode) {
                 $backupValue = $backupValueNode.Value
 
                 # Step 7: Display the comparison result
