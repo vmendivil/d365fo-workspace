@@ -4,9 +4,6 @@
 $configFile = Get-ChildItem "$PSScriptRoot\config.ps1"
 . $configFile.FullName
 
-# Define backup suffix
-$backupSuffix = "_OrigBackup"
-
 function Switch-FOWorkspace
 {
 	<#
