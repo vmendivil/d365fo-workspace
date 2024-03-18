@@ -42,7 +42,6 @@ function Switch-FOWorkspace
 	if ($switchPackages)
 	{
 		Stop-D365Environment -ShowOriginalProgress
-		Write-Host "Waiting 60 seconds..."
 		Start-Sleep -Seconds 60
 		
 		$appSettings = $webConfig.configuration.appSettings
